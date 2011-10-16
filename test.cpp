@@ -9,7 +9,6 @@
 #include <GLUT/glut.h>
 #include <math.h>
 #include <stdio.h>
-
 #include <gsl/gsl_linalg.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_matrix_double.h>
@@ -49,7 +48,7 @@ void display(void)
 	   glPopMatrix();
 
 	   glTranslatef (0.5, 0.0, 0.0);
-//	   glRotatef ((GLfloat) elbow  * 180/PI, 0.0, 0.0, 1.0);
+	   glRotatef ((GLfloat) elbow1  * 180/PI, 0.0, 0.0, 1.0);
 	   glTranslatef (0.5, 0.0, 0.0);
 	   glPushMatrix();
 	   glScalef (2.0, 0.4, 1.0);
@@ -75,8 +74,10 @@ void reshape (int w, int h)
 gsl_matrix* jacobian(gsl_matrix* J) {
 	gsl_matrix_set(J, 0, 0, length_arm_1 * sin(shoulder) * (-1));
 	gsl_matrix_set(J, 0, 1, length_arm_2 * sin(elbow) * (-1));
+	gsl_matrix_set(J, 0, 2, length_arm_3 * sin(elbow1) * (-1));
 	gsl_matrix_set(J, 1, 0, length_arm_1 * cos(shoulder));
 	gsl_matrix_set(J, 1, 1, length_arm_2 * cos(elbow));
+	gsl_matrix_set(J, 1, 2, length_arm_2 * cos(elbow1));
 	return J;
 }
 
@@ -93,23 +94,22 @@ gsl_matrix* inverse(gsl_matrix* J) {
 
 	int M, N;
 
-	M = 2;
+	M = 3;
 	N = 2;
 
-	A = gsl_matrix_alloc(M, M);
-	U = gsl_matrix_alloc(M, M);
+	A = gsl_matrix_alloc(M, N);
+	U = gsl_matrix_alloc(M, N);
 	V = gsl_matrix_alloc(N, N);
-	new_U = gsl_matrix_alloc(N, N);
-	new_S = gsl_matrix_alloc(M, N);
-	y = gsl_matrix_alloc(M, N);
-	foo = gsl_matrix_alloc(M, N);
+	new_U = gsl_matrix_alloc(N, M);
+	new_S = gsl_matrix_alloc(N, N);
+	y = gsl_matrix_alloc(N, N);
+	foo = gsl_matrix_alloc(N, M);
 	S = gsl_vector_alloc(N);
 	work = gsl_vector_alloc(N);
 
 
 	gsl_linalg_SV_decomp(J, V, S, work);
 	U = J;
-
 	for(int i = 0 ;i < N; i++){
 		if (gsl_vector_get(S, i) != 0.f) {
 			gsl_vector_set(S, i, (float)(1/(gsl_vector_get(S, i))));
@@ -122,8 +122,8 @@ gsl_matrix* inverse(gsl_matrix* J) {
 	gsl_matrix_set(new_S, 1, 1, gsl_vector_get(S, 0));
 
 	gsl_matrix_transpose_memcpy(new_U, U);
-
 	gsl_blas_dgemm( CblasNoTrans, CblasNoTrans, 1.0, V, new_S, 0.0, y );
+
 	gsl_blas_dgemm( CblasNoTrans, CblasNoTrans, 1.0, y, new_U, 0.0, foo );
 	return foo;
 }
@@ -131,8 +131,8 @@ gsl_matrix* inverse(gsl_matrix* J) {
 gsl_matrix* end_effector() {
 	gsl_matrix* effector;
 	effector = gsl_matrix_alloc(2,1);
-	gsl_matrix_set(effector, 0, 0, length_arm_1 * cos(shoulder) + length_arm_2 * cos(shoulder - elbow));
-	gsl_matrix_set(effector, 1, 0, length_arm_1 * sin(shoulder) + length_arm_2 * sin(shoulder + elbow));
+	gsl_matrix_set(effector, 0, 0, length_arm_1 * cos(shoulder) + length_arm_2 * cos(shoulder - elbow) + length_arm_3 * cos(shoulder-elbow-elbow1)); //plus the 3rd arm
+	gsl_matrix_set(effector, 1, 0, length_arm_1 * sin(shoulder) + length_arm_2 * sin(shoulder + elbow) + length_arm_3 * sin(shoulder+elbow+elbow1));
 	return effector;
 }
 
@@ -161,44 +161,46 @@ void mouse(int key, int tmp, int x, int y) {
 
 	gsl_matrix* J;
 	gsl_matrix* del_THETA;
+	gsl_matrix* J_T;
 	gsl_matrix* del_E;
 	gsl_matrix* J_INV;
+	gsl_matrix* J_INV_T;
 
-	int M, N, P, count;
+	int M, N, P, count, Q;
 	 M = 2;
+	 Q = 3;
 	 N = 2;
 	 P = 1;
 	 count = 0;
 
 	 E = gsl_matrix_alloc(M, P);
 	 G = gsl_matrix_alloc(M, P);
-	 J = gsl_matrix_alloc(M, N);
-	 del_THETA = gsl_matrix_alloc(M, P);
+	 J = gsl_matrix_alloc(N, Q);
+	 J_T = gsl_matrix_alloc(Q, N);
+	 del_THETA = gsl_matrix_alloc(Q, P);
 	 del_E = gsl_matrix_alloc(M, P);
-	 J_INV = gsl_matrix_alloc(M, N);
-
+	 J_INV = gsl_matrix_alloc(N, Q);
+	 J_INV_T = gsl_matrix_alloc(Q, N);
 
 	if (key == GLUT_LEFT_BUTTON) {
 		 x_norm = (float)(x - 250)/250;
 		 y_norm = (float)(250 - y)/ 250;
 		 gsl_matrix_set(G, 0, 0, x_norm);
 		 gsl_matrix_set(G, 1, 0, y_norm);
-		 printf(" x %f ", x_norm);
-		 printf(" y %f \n", y_norm);
 		 E = end_effector();
-		 printf(" ex %f ", length_arm_1 * cos(shoulder) + length_arm_2 * cos(shoulder - elbow));
-		 printf(" ey %f \n", length_arm_1 * sin(shoulder) + length_arm_2 * sin(shoulder + elbow));
 
 		 while(!close_to_target(G,E)) {
 			 J = jacobian(J);
-			 J_INV = inverse(J);
+			 gsl_matrix_transpose_memcpy(J_T, J);
+			 J_INV = inverse(J_T);
 			 del_E = difference(G, E); //del x, del y
-			 gsl_blas_dgemm( CblasNoTrans, CblasNoTrans, 1.0, J_INV, del_E, 0.0, del_THETA );
-
+			 gsl_matrix_transpose_memcpy(J_INV_T, J_INV);
+			 gsl_blas_dgemm( CblasNoTrans, CblasNoTrans, 1.0, J_INV_T, del_E, 0.0, del_THETA );
 			 shoulder += gsl_matrix_get(del_THETA, 0, 0);
 			 elbow += gsl_matrix_get(del_THETA, 1, 0);
+			 elbow1 += gsl_matrix_get(del_THETA, 2, 0);
 			 E = end_effector();
-			 if (count++ > 100000){
+			 if (count++ > 10000){
 				 count = 0;
 				 break;
 			 }
