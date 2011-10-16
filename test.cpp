@@ -15,9 +15,9 @@
 #include <gsl/gsl_matrix_double.h>
 #include <gsl/gsl_blas.h>
 
-float shoulder = 0.f, elbow = 0.f;
+float shoulder = 0.f, elbow = 0.f, elbow1 = 0.f;
 //static int shoulder = 0, elbow = 0;
-const float PI = 3.14159, length_arm_1 = 1.f, length_arm_2 = 1.f, beta = 0.01f;
+const float PI = 3.14159, length_arm_1 = 0.5f, length_arm_2 = 0.5f, beta = 1.f, length_arm_3 = 0.5f;
 //float shoulder = (float)PI/2.f;
 //float elbow = (float)PI/9.f;
 
@@ -30,29 +30,35 @@ void init(void)
 
 void display(void)
 {
-   glClear (GL_COLOR_BUFFER_BIT);
-   glPushMatrix();
-   glTranslatef (-1.0, 0.0, 0.0);
-   glRotatef ((GLfloat) shoulder * 180/PI, 0.0, 0.0, 1.0);
-   glTranslatef (1.0, 0.0, 0.0);
-   glPushMatrix();
-   glScalef (2.0, 0.4, 1.0);
-   glutWireCube (length_arm_1);
+	   glClear (GL_COLOR_BUFFER_BIT);
+	   glPushMatrix();
+	   glTranslatef (-0.5, 0.0, 0.0);
+	   glRotatef ((GLfloat) shoulder * 180/PI, 0.0, 0.0, 1.0);
+	   glTranslatef (0.5, 0.0, 0.0);
+	   glPushMatrix();
+	   glScalef (2.0, 0.4, 1.0);
+	   glutWireCube (0.5);
+	   glPopMatrix();
 
-	/* flush GL buffers */
-   glPopMatrix();
+	   glTranslatef (0.5, 0.0, 0.0);
+	   glRotatef ((GLfloat) elbow  * 180/PI, 0.0, 0.0, 1.0);
+	   glTranslatef (0.5, 0.0, 0.0);
+	   glPushMatrix();
+	   glScalef (2.0, 0.4, 1.0);
+	   glutWireCube (0.5);
+	   glPopMatrix();
 
-   glTranslatef (0.5, 0.0, 0.0);
-   glRotatef ((GLfloat) elbow * 180/PI, 0.0, 0.0, 1.0);
-   glTranslatef (1.0, 0.0, 0.0);
-   glPushMatrix();
-   glScalef (2.0, 0.4, 1.0);
-   glutWireCube (length_arm_2);
-   glPopMatrix();
+	   glTranslatef (0.5, 0.0, 0.0);
+//	   glRotatef ((GLfloat) elbow  * 180/PI, 0.0, 0.0, 1.0);
+	   glTranslatef (0.5, 0.0, 0.0);
+	   glPushMatrix();
+	   glScalef (2.0, 0.4, 1.0);
+	   glutWireCube (0.5);
+	   glPopMatrix();
 
-   glPopMatrix();
-   glutSwapBuffers();
-   glFlush();
+
+	   glPopMatrix();
+	   glutSwapBuffers();
 }
 
 void reshape (int w, int h)
@@ -140,30 +146,13 @@ gsl_matrix* difference(gsl_matrix* G, gsl_matrix* E) {
 	return new_matrix;
 }
 
-void keyboard (unsigned char key, int x, int y)
-{
-//   switch (key) {
-//      case 's':   /*  s key rotates at shoulder  */
-//         shoulder = (shoulder + 5) % 360;
-//         glutPostRedisplay();
-//         break;
-//      case 'S':
-//         shoulder = (shoulder - 5) % 360;
-//         glutPostRedisplay();
-//         break;
-//      case 'e':  /*  e key rotates at elbow  */
-//         elbow = (elbow + 5) % 360;
-//         glutPostRedisplay();
-//         break;
-//      case 'E':
-//         elbow = (elbow - 5) % 360;
-//         glutPostRedisplay();
-//         break;
-//      default:
-//         break;
-//   }
+bool close_to_target(gsl_matrix* G, gsl_matrix* E) {
+	gsl_matrix* new_matrix;
+	new_matrix = difference(G, E);
+	if (fabs(gsl_matrix_get(new_matrix, 0,0)) < 0.1f && fabs((gsl_matrix_get(new_matrix, 1, 0))) < 0.1f)
+		return true;
+	return false;
 }
-
 
 void mouse(int key, int tmp, int x, int y) {
 	float x_norm, y_norm;
@@ -197,10 +186,10 @@ void mouse(int key, int tmp, int x, int y) {
 		 printf(" x %f ", x_norm);
 		 printf(" y %f \n", y_norm);
 		 E = end_effector();
-		 printf(" ex %f ", length_arm_2 * cos(elbow));
-		 printf(" ey %f \n", length_arm_2 * sin(elbow));
+		 printf(" ex %f ", length_arm_1 * cos(shoulder) + length_arm_2 * cos(shoulder - elbow));
+		 printf(" ey %f \n", length_arm_1 * sin(shoulder) + length_arm_2 * sin(shoulder + elbow));
 
-		 while(true) {
+		 while(!close_to_target(G,E)) {
 			 J = jacobian(J);
 			 J_INV = inverse(J);
 			 del_E = difference(G, E); //del x, del y
@@ -209,14 +198,16 @@ void mouse(int key, int tmp, int x, int y) {
 			 shoulder += gsl_matrix_get(del_THETA, 0, 0);
 			 elbow += gsl_matrix_get(del_THETA, 1, 0);
 			 E = end_effector();
-			 if (count++ > 10000){
+			 if (count++ > 100000){
 				 count = 0;
 				 break;
 			 }
+
 			 glutPostRedisplay();
 
 		 }
 	}
+
 }
 
 
@@ -230,7 +221,6 @@ int main(int argc, char** argv)
    init ();
    glutDisplayFunc(display);
    glutReshapeFunc(reshape);
-//   glutKeyboardFunc(keyboard);
    glutMouseFunc(mouse);
    glutMainLoop();
    return 0;
